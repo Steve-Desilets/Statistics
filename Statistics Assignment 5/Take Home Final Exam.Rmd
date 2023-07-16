@@ -1,0 +1,570 @@
+---
+title: "Take Home Final Exam - Steve Desilets"
+output: html_document
+---
+
+For the take-home part of the MSDS 401 Final Exam, you are tasked with analyzing data on new daily covid-19 cases and deaths in European Union (EU) and European Economic Area (EEA) countries. A data file may be downloaded [here](https://www.ecdc.europa.eu/en/publications-data/data-daily-new-cases-covid-19-eueea-country), *or* you may use the provided **read.csv()** code in the 'setup' code chunk below to read the data directly from the web csv. Either approach is acceptable; the data should be the same.
+
+Once you have defined a data frame with the daily case and death and country data, you are asked to:  (1) perform an Exploratory Data Analysis (EDA), (2) perform some hypothesis testing, (3) perform some correlation testing, and (4) fit and describe a linear regression model. Each of these four (4) items is further explained below and "code chunks" have been created for you in which to add your R code, just as with the R and Data Analysis Assignments. You may add additional code chunks, as needed. You should make comments in the code chunks or add clarifying text between code chunks that you think further your work.
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE,
+                      message = FALSE)
+
+
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(tidyverse)
+library(dplyr)
+library(Hmisc)
+library(rockchalk)
+
+
+
+
+
+# The read.csv() below reads the data directly from the web. You may use this or
+# you can download and read from a local copy of the data file. To work from a
+# local file, you will need to modify the read.csv() code here:
+
+data <- read.csv("https://opendata.ecdc.europa.eu/covid19/nationalcasedeath_eueea_daily_ei/csv",
+                 na.strings = "", fileEncoding = "UTF-8-BOM")
+
+# The zero-th step in any analysis is to 'sanity check' our data. Here, we call
+# glimpse() from the 'dplyr' package, but utils::str() would work, as well.
+glimpse(data)
+
+#
+
+# The last thing we're going to do is drop the 'continentExp' vector (as all
+# observations are "Europe"), coerce the 'dateRep' vector to a date format, and
+# coerce the country and territory vectors to factors.
+
+data <- data %>%
+  select(-c("continentExp")) %>%
+  mutate(dateRep = dmy(dateRep),
+         countriesAndTerritories = as.factor(countriesAndTerritories),
+         geoId = as.factor(geoId),
+         countryterritoryCode = as.factor(countryterritoryCode))
+
+```
+
+A data dictionary for the dataset is available [here](https://www.ecdc.europa.eu/sites/default/files/documents/Description-and-disclaimer_daily_reporting.pdf).
+
+#### Definitions:
+
+* "Incidence rate" is equal to new daily cases per 100K individuals. Country population estimates can be found in 'popData2020.' You will calculate a daily incidence rate in item (1), for each country, that we will explore further in items (2) and (3).
+
+* "Fatality rate" is equal to new daily deaths per 100K individuals. Country population estimates can be found in 'popData2020.' You will calculate a daily fatality rate in item (1), for each country, that we will explore further in items (2) and (3).
+
+---
+
+#### 1. Descriptive Statistics
+  Perform an Exploratory Data Analysis (EDA). Your EDA is exactly that:  yours. Your knit .html should include the visualizations and summary tables that you find valuable while exploring this dataset. **However**, at minimum, your EDA must include the following:
+
+* Creation of a vector, 'incidence_rate,' equal to the daily new cases per 100K individuals, per country. Country populations are provided in 'popData2020.' This vector should be added to the 'data' data frame.
+* Creation of a vector, 'fatality_rate,' equal to the new deaths per 100K individuals, per country. Country populations are provided in 'popData2020.' This vector should be added to the 'data' data frame.
+* A visualization exploring new cases or incidence rates, per country, over time. You may choose a subset of countries, if you wish, but your visualization should include at least five (5) countries and include the entire time frame of the dataset.
+* A visualization exploring new deaths or fatality rates, per country, over time. You may choose a subset of countries, if you wish, but your visualization should include at least five (5) countries.
+* A table or visualization exploring some other aspect of the data. For example, you could explore case fatality rates per country; the number of deaths divided by the total number of cases. Note that to do this, you would want to like across the entire time of the dataset, looking at the total cases and deaths, per country.
+
+```{r descriptive_stats, fig.width = 8, fig.height = 8}
+
+#Create a vector for incidence_rate to be added to the data frame
+
+incidence_rate <- (data$cases / data$popData2020) * 100000
+
+data <- cbind(data, incidence_rate)
+
+#Create a vector for fatality rate to be added to the data frame
+
+fatality_rate <- (data$deaths / data$popData2020) * 100000
+
+data <- cbind(data, fatality_rate)
+
+
+#Create a visualization exploring new cases or incidence rates per country over time (with at least 5 countries)
+
+five_countries_data <- data[data$countriesAndTerritories == "Austria" | data$countriesAndTerritories == "Croatia" | data$countriesAndTerritories == "Luxembourg" | data$countriesAndTerritories == "Poland" | data$countriesAndTerritories == "Slovakia", ]
+
+
+five_countries_data$countriesAndTerritories <- droplevels(five_countries_data$countriesAndTerritories)
+
+
+interaction.plot(x.factor = five_countries_data$dateRep, trace.factor = five_countries_data$countriesAndTerritories, response = five_countries_data$incidence_rate, fun = mean, xlab = "Date", ylab = "COVID-19 Case Incidence Rate (per 100,000 people)", col = c("red", "sienna1", "turquoise1", "thistle4", "springgreen"), main = "COVID-19 Incidence Rates by Country", lty = 7, lwd = 1, trace.label = "Country", ylim = c(0,800))
+
+
+
+#Create a visualization exploring new deaths or fatality rates per country over time (with at least 5 countries)
+
+interaction.plot(x.factor = five_countries_data$dateRep, trace.factor = five_countries_data$countriesAndTerritories, response = five_countries_data$fatality_rate, fun = mean, xlab = "Date", ylab = "COVID-19 Fatality Rate (per 100,000 people)", col = c("red", "sienna1", "turquoise1", "thistle4", "springgreen"), main = "COVID-19 Daily Fatality Rates by Country", lty = 7, lwd = 1, trace.label = "Country", ylim = c(0,4))
+
+
+
+
+# Create a table exploring some other aspect of the data (using data from across the entire timespan of the dataset)
+
+# First I'm gatherting data regarding the minimum, mean, and maximum values for the incidence rates and fatality rates for each country
+
+Min_incidence_rate <- aggregate(incidence_rate ~ countriesAndTerritories, data = data, FUN = min)
+
+Mean_incidence_rate <- aggregate(incidence_rate ~ countriesAndTerritories, data = data, FUN = mean)
+
+Max_incidence_rate <- aggregate(incidence_rate ~ countriesAndTerritories, data = data, FUN = max)
+
+Min_fatality_rate <- aggregate(fatality_rate ~ countriesAndTerritories, data = data, FUN = min)
+
+Mean_fatality_rate <- aggregate(fatality_rate ~ countriesAndTerritories, data = data, FUN = mean)
+
+Max_fatality_rate <- aggregate(fatality_rate ~ countriesAndTerritories, data = data, FUN = max)
+
+
+
+#Next I'm creating vectors of the skewness and kurtosis of the incidence rates and fatality rates for each country
+
+Austria_data <- data[data$countriesAndTerritories == "Austria", ]
+Belgium_data <- data[data$countriesAndTerritories == "Belgium", ]
+Bulgaria_data <- data[data$countriesAndTerritories == "Bulgaria", ]
+Croatia_data <- data[data$countriesAndTerritories == "Croatia", ]
+Cyprus_data <- data[data$countriesAndTerritories == "Cyprus", ]
+Czechia_data <- data[data$countriesAndTerritories == "Czechia", ]
+Denmark_data <- data[data$countriesAndTerritories == "Denmark", ]
+Estonia_data <- data[data$countriesAndTerritories == "Estonia", ]
+Finland_data <- data[data$countriesAndTerritories == "Finland", ]
+France_data <- data[data$countriesAndTerritories == "France", ]
+Germany_data <- data[data$countriesAndTerritories == "Germany", ]
+Greece_data <- data[data$countriesAndTerritories == "Greece", ]
+Hungary_data <- data[data$countriesAndTerritories == "Hungary", ]
+Iceland_data <- data[data$countriesAndTerritories == "Iceland", ]
+Ireland_data <- data[data$countriesAndTerritories == "Ireland", ]
+Italy_data <- data[data$countriesAndTerritories == "Italy", ]
+Latvia_data <- data[data$countriesAndTerritories == "Latvia", ]
+Liechtenstein_data <- data[data$countriesAndTerritories == "Liechtenstein", ]
+Lithuania_data <- data[data$countriesAndTerritories == "Lithuania", ]
+Luxembourg_data <- data[data$countriesAndTerritories == "Luxembourg", ]
+Malta_data <- data[data$countriesAndTerritories == "Malta", ]
+Netherlands_data <- data[data$countriesAndTerritories == "Netherlands", ]
+Norway_data <- data[data$countriesAndTerritories == "Norway", ]
+Poland_data <- data[data$countriesAndTerritories == "Poland", ]
+Portugal_data <- data[data$countriesAndTerritories == "Portugal", ]
+Romania_data <- data[data$countriesAndTerritories == "Romania", ]
+Slovakia_data <- data[data$countriesAndTerritories == "Slovakia", ]
+Slovenia_data <- data[data$countriesAndTerritories == "Slovenia", ]
+Spain_data <- data[data$countriesAndTerritories == "Spain", ]
+Sweden_data <- data[data$countriesAndTerritories == "Sweden", ]
+
+incidence_rate_skewness_vector <- c(skewness(Austria_data$incidence_rate, na.rm = TRUE), 
+  skewness(Belgium_data$incidence_rate, na.rm = TRUE), 
+  skewness(Bulgaria_data$incidence_rate, na.rm = TRUE), 
+  skewness(Croatia_data$incidence_rate, na.rm = TRUE),
+  skewness(Cyprus_data$incidence_rate, na.rm = TRUE),
+  skewness(Czechia_data$incidence_rate, na.rm = TRUE),
+  skewness(Denmark_data$incidence_rate, na.rm = TRUE),
+  skewness(Estonia_data$incidence_rate, na.rm = TRUE),
+  skewness(Finland_data$incidence_rate, na.rm = TRUE),
+  skewness(France_data$incidence_rate, na.rm = TRUE),
+  skewness(Germany_data$incidence_rate, na.rm = TRUE),
+  skewness(Greece_data$incidence_rate, na.rm = TRUE),
+  skewness(Hungary_data$incidence_rate, na.rm = TRUE),
+  skewness(Iceland_data$incidence_rate, na.rm = TRUE),
+  skewness(Ireland_data$incidence_rate, na.rm = TRUE),
+  skewness(Italy_data$incidence_rate, na.rm = TRUE),
+  skewness(Latvia_data$incidence_rate, na.rm = TRUE),
+  skewness(Liechtenstein_data$incidence_rate, na.rm = TRUE),
+  skewness(Lithuania_data$incidence_rate, na.rm = TRUE),
+  skewness(Luxembourg_data$incidence_rate, na.rm = TRUE),
+  skewness(Malta_data$incidence_rate, na.rm = TRUE),
+  skewness(Netherlands_data$incidence_rate, na.rm = TRUE),
+  skewness(Norway_data$incidence_rate, na.rm = TRUE),
+  skewness(Poland_data$incidence_rate, na.rm = TRUE),
+  skewness(Portugal_data$incidence_rate, na.rm = TRUE),
+  skewness(Romania_data$incidence_rate, na.rm = TRUE),
+  skewness(Slovakia_data$incidence_rate, na.rm = TRUE),
+  skewness(Slovenia_data$incidence_rate, na.rm = TRUE),
+  skewness(Spain_data$incidence_rate, na.rm = TRUE),
+  skewness(Sweden_data$incidence_rate, na.rm = TRUE))
+
+
+fatality_rate_skewness_vector <- c(skewness(Austria_data$fatality_rate, na.rm = TRUE),
+  skewness(Belgium_data$fatality_rate, na.rm = TRUE),
+  skewness(Bulgaria_data$fatality_rate, na.rm = TRUE),
+  skewness(Croatia_data$fatality_rate, na.rm = TRUE),
+  skewness(Cyprus_data$fatality_rate, na.rm = TRUE),
+  skewness(Czechia_data$fatality_rate, na.rm = TRUE),
+  skewness(Denmark_data$fatality_rate, na.rm = TRUE),
+  skewness(Estonia_data$fatality_rate, na.rm = TRUE),
+  skewness(Finland_data$fatality_rate, na.rm = TRUE),
+  skewness(France_data$fatality_rate, na.rm = TRUE),
+  skewness(Germany_data$fatality_rate, na.rm = TRUE),
+  skewness(Greece_data$fatality_rate, na.rm = TRUE),
+  skewness(Hungary_data$fatality_rate, na.rm = TRUE),
+  skewness(Iceland_data$fatality_rate, na.rm = TRUE),
+  skewness(Ireland_data$fatality_rate, na.rm = TRUE),
+  skewness(Italy_data$fatality_rate, na.rm = TRUE),
+  skewness(Latvia_data$fatality_rate, na.rm = TRUE),
+  skewness(Liechtenstein_data$fatality_rate, na.rm = TRUE),
+  skewness(Lithuania_data$fatality_rate, na.rm = TRUE),
+  skewness(Luxembourg_data$fatality_rate, na.rm = TRUE),
+  skewness(Malta_data$fatality_rate, na.rm = TRUE),
+  skewness(Netherlands_data$fatality_rate, na.rm = TRUE),
+  skewness(Norway_data$fatality_rate, na.rm = TRUE),
+  skewness(Poland_data$fatality_rate, na.rm = TRUE),
+  skewness(Portugal_data$fatality_rate, na.rm = TRUE),
+  skewness(Romania_data$fatality_rate, na.rm = TRUE),
+  skewness(Slovakia_data$fatality_rate, na.rm = TRUE),
+  skewness(Slovenia_data$fatality_rate, na.rm = TRUE),
+  skewness(Spain_data$fatality_rate, na.rm = TRUE),
+  skewness(Sweden_data$fatality_rate, na.rm = TRUE))
+
+
+
+incidence_rate_kurtosis_vector <- c(kurtosis(Austria_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Belgium_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Bulgaria_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Croatia_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Cyprus_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Czechia_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Denmark_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Estonia_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Finland_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(France_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Germany_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Greece_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Hungary_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Iceland_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Ireland_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Italy_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Latvia_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Liechtenstein_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Lithuania_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Luxembourg_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Malta_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Netherlands_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Norway_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Poland_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Portugal_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Romania_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Slovakia_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Slovenia_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Spain_data$incidence_rate , excess = TRUE, na.rm = TRUE),
+  kurtosis(Sweden_data$incidence_rate , excess = TRUE, na.rm = TRUE))
+
+
+fatality_rate_kurtosis_vector <- c(kurtosis(Austria_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Belgium_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Bulgaria_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Croatia_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Cyprus_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Czechia_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Denmark_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Estonia_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Finland_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(France_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Germany_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Greece_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Hungary_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Iceland_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Ireland_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Italy_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Latvia_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Liechtenstein_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Lithuania_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Luxembourg_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Malta_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Netherlands_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Norway_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Poland_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Portugal_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Romania_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Slovakia_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Slovenia_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Spain_data$fatality_rate , excess = TRUE, na.rm = TRUE),
+kurtosis(Sweden_data$fatality_rate , excess = TRUE, na.rm = TRUE))
+
+# Last, I'm consolidating these data into one output table
+
+
+Table_Q1 <- cbind(Min_incidence_rate, 
+                    Mean_incidence_rate, 
+                    Max_incidence_rate, 
+                    incidence_rate_skewness_vector,
+                    incidence_rate_kurtosis_vector,
+                    Min_fatality_rate,
+                    Mean_fatality_rate,
+                    Max_fatality_rate,
+                    fatality_rate_skewness_vector,
+                    fatality_rate_kurtosis_vector)
+
+Table_Q1 <- Table_Q1[ -c(3, 5, 9, 11, 13) ]
+
+knitr::kable(Table_Q1, caption = "COVID-19 Case Incidence and Fatality Rate Summary Data by Country", col.names = c("Country / Territory", "Minimum Incidence Rate", "Mean Incidence Rate", "Maximum Incidence Rate", "Incidence Rate Skewness", "Incidence Rate Kurtosis", "Minimum Fatality Rate", "Mean Fatality Rate", "Maximum Fatality Rate", "Fatality Rate Skewness", "Fatality Rate Kurtosis"))
+
+
+```
+
+#### 2. Inferential Statistics
+  Select two (2) countries of your choosing and compare their incidence or fatality rates using hypothesis testing. At minimum, your work should include the following:
+
+* Visualization(s) comparing the daily incidence or fatality rates of the selected countries,
+* A statement of the null hypothesis.
+* A short justification of the statistical test selected.
+    + Why is the test you selected an appropriate one for the comparison we're making?
+* A brief discussion of any distributional assumptions of that test.
+    + Does the statistical test we selected require assumptions about our data?
+    + If so, does our data satisfy those assumptions?
+* Your selected alpha.
+* The test function output; i.e. the R output.
+* The relevant confidence interval, if not returned by the R test output.
+* A concluding statement on the outcome of the statistical test.
+    + i.e. Based on our selected alpha, do we reject or fail to reject our null hypothesis?
+
+```{r inferential_stats, fig.width = 9, fig.height = 8}
+
+# Create a visualization comparing the daily incidence or fatality rates of the selected countries
+
+data$log_incidence_rate <- log10(data$incidence_rate)
+
+two_countries_data <- data[data$countriesAndTerritories == "Belgium" | data$countriesAndTerritories == "Romania" , ]
+
+two_countries_data$countriesAndTerritories <- droplevels(two_countries_data$countriesAndTerritories)
+
+boxplot(two_countries_data$log_incidence_rate ~ two_countries_data$countriesAndTerritories, ylab = "Log Incidence Rate (per 100,000 people)", main = "Log COVID-19 Case Incidence Rates by Country", xlab = "Country", col = c("goldenrod1", "red"), ylim = c(-2, 3))
+
+# State the null hypothesis
+print("The null hypothesis is that the log of the average daily fatality rate from COVID-19 in Belgium is equal to the log of the average daily fatality rate from COVID-19 in Romania during the sample time frame.")
+
+# Provide a justification for the statistical test selected
+print("I am selecting the t-test for the difference in two means for populations with unknown population variances.  I'll use this test to compare the means of the log daily COIVD-19 case incidence rates in Belgium and Romania.  This statistical test has nice properties for our given scenario since we're interested in comparing two continuous variables and since we don't know the true population variances of log infection rates in either country.")
+
+# Discuss the distributional assumptions of the test and convey whether our data satisfies those assumptions
+
+print("One assumption necessary for a t-test is that underlying data are normally distributed.  As the table in part 1 conveys, all the incidence rate and fatality rate distributions in every country exhibit strong skew or kurtosis.  Consequently, we've performed a log transformation on the data to help satisfy this normality assumption.  Notably, though, the table in part 1 also displays that almost every country exhibited minimum fatality or incidence rates of less than or equal to zero during this time period, so using the log-transformed data for most countries would result in undefined values.  Fortunately, there are four countries (Belgium, Romania, Germany, and Austria), with minimum daily incidence rates above zero.  For that reason, we've chosen two of those four countries for this statistical test.  As we see in the histograms and Q-Q plots below, the normality assumption may not be 100% perfectly met, but this is as best as we can do given the strong non-normality of the original underlying data.  There also were no null values for incidence rates in these countries, which gives us better confidence in the cleanliness of the incidence rate data from these countries.")
+
+Belgium_data <- data[data$countriesAndTerritories == "Belgium", ]
+Romania_data <- data[data$countriesAndTerritories == "Romania", ]
+
+hist(Belgium_data$log_incidence_rate, xlab = "Log Incidence Rate", ylab = "Frequency", main = "Log Daily COVID-19 Case Incidence Rates in Belgium", col = "goldenrod1", xlim = c(-2, 3), ylim = c(0, 400))
+
+hist(Romania_data$log_incidence_rate, xlab = "Log Incidence Rate", ylab = "Frequency", main = "Log Daily COVID-19 Case Incidence Rates in Romania", col = "red", xlim = c(-2, 3), ylim = c(0, 400))
+
+qqnorm(y = Belgium_data$log_incidence_rate, xlab = "Theoretical Quantiles", ylab = "Sample Quantiles", col= "goldenrod1", main = "Belgium Log Daily COVID-19 Case Incidence Rate Q-Q Plot")
+qqline(y = Belgium_data$log_incidence_rate, distribution = qnorm, probs = c(0.25, 0.75), qtype = 7, col = "black")
+
+qqnorm(y = Romania_data$log_incidence_rate, xlab = "Theoretical Quantiles", ylab = "Sample Quantiles", col= "red", main = "Romania Log Daily COVID-19 Case Incidence Rate Q-Q Plot")
+qqline(y = Romania_data$log_incidence_rate, distribution = qnorm, probs = c(0.25, 0.75), qtype = 7, col = "black")
+
+
+# State my selected alpha
+print ("I have selected to conduct this statistical test at the 95% confidence level so the alpha for this test is 0.05.")
+
+
+# Provide the outputs of my statistical test
+t.test(x = Belgium_data$log_incidence_rate, y = Romania_data$log_incidence_rate, alternative = c("two.sided"), paired = FALSE, var.equal = FALSE, conf.level = 0.95)
+
+
+# State the confidence interval corresponding to my statistical test
+print("The 95% confidence interval for the difference of the average log daily COVID-19 incidence rates in Belgium and Romania is (0.3155481, 0.4324151).")
+
+
+# Write a concluding statement from the outcome of the statistical test
+print("The t-test conveys that we should reject the null hypothesis and that the average log daily COVID-19 case incidence rates in Belgium and Romania were not equal throughout the measurement period.")
+
+```
+
+#### 3. Correlation
+  Considering all countries, explore the relationship between incidence rates and fatality rates. At minimum, your work should include the following:
+
+* Visualization(s) showing the distributions of daily incidence and fatality rates, regardless of country. Please note that both country and date should be disregarded here.
+* A short statement identifying the most appropriate correlation coefficient.
+    + For the correlation we're interested in, which correlation coefficient is most appropriate?
+    + Why do you find the correlation coefficient selected to be the most appropriate?
+* The calculated correlation coefficient or coefficient test output; e.g. *cor()* or *cor.test()*.
+  
+```{r correlation, fig.width = 8, fig.height = 8}
+
+
+# Create visualization(s) of showing the distribution of daily incidence and fatality rates
+
+
+par(mfrow = c(2,2))
+
+boxplot(data$incidence_rate, ylab = "Incidence Rate (per 100,000 people)", main = "COVID-19 Case Incidence Rates Boxplot", col = "peru", ylim = c(-1000, 4000))
+
+boxplot(data$fatality_rate, ylab = "Fatality Rate (per 100,000 people)", main = "COVID-19 Fatality Rates Boxplot", col = "slateblue2", ylim = c(-50, 150))
+
+hist(x = data$incidence_rate, xlab = "Incidence Rate (per 100,000 people)", ylab = "Frequency", main = "COVID-19 Case Incidence Rates Histogram", col = "peru", xlim = c(-1000, 4000), ylim = c(0, 30000))
+
+hist(x = data$fatality_rate , xlab = "Fatality Rate (per 100,000 people)", ylab = "Frequency", main = "COVID-19 Fatality Rates Histogram", col = "slateblue2", xlim = c(-50, 150), ylim = c(0, 25000))
+
+par(mfrow = c(1,1))
+
+plot(x = data$incidence_rate, y = data$fatality_rate, ylab = "Fatality Rate (per 100,000 people)", xlab = "Incidence Rate (per 100,000 people)", main = "COVID-19 Daily Incidence Rates and Fatality Rates", pch = 20, ylim = c(-50, 150), xlim = c(-1000, 4000))
+
+
+print("Unfortunately, the plots displaying the distributions of incidence rates and fatality rates in all countries are quite hard to read - largely due to a small number of extreme outliers in these distributions.  The fact that these plots are difficult to read reflects the broader trend that this data is quite messy.  For example, these outliers suggest that nearly 3.8% of one country's population newly reported a COVID-19 case on the same day and that over 0.3% of one country's population died of COVID-19 on the same day.  Both of these figures seem extremely high and would normally warrant further investigation.  Furthermore, there are 26,816 rows of null values for deaths in this dataset and 26,921 rows of null values for cases in this dataset as well.  These null values would also normally warrant further investigation to determine whether the missing data can be retrieved.  Additionally, five countries reported negative cases on some days and nine countries reported negative deaths on some days.  Since negative cases and deaths are not possible, these values would also normally warrant investigation or potentially even removal from the dataset.  However, since I have no further power to investigate the sources of these data, I cannot fix these data cleanliness problems, so I cannot make these plots any more legible.  Furthermore, I would normally consider the log transformation of some of these data to make the visualizations more readable, but I cannot do that either since there are many zeros in these datasets and the log of zero is undefined.")
+
+
+
+
+# Provide a short statement identifying the most appropriate correlation coefficient
+
+print("The most appropriate correlation coefficient in this scenario is the Spearman correlation coefficient, which works well with variables containing data that are not normally distributed.  Since the fatality rates and incidence rates are both ratio-level data and since both variables have extremely strong outliers and skewness that suggest that the data are not normally distributed, we can proceed with the Spearman correlation.")
+
+# Provide the calculated correlation coefficient / coefficient test output
+
+non_null_data  <- data[ -c(1:10) ]
+
+non_null_data <- na.omit(non_null_data) 
+
+cor(x = non_null_data$incidence_rate, y = non_null_data$fatality_rate, method = "spearman" )
+
+```
+
+#### 4. Regression
+  Here, we will fit a model on data from twenty (20) countries considering total new cases as a function of population, population density and gross domestic product (GDP) per capita. Note that the GDP per capita is given in "purchasing power standard," which considers the costs of goods and services in a country relative to incomes in that country; i.e. we will consider this as appropriately standardized.
+
+Code is given below defining a new data frame, 'model_df,' which provides the total area and standardized GDP per capita for the twenty (20) countries for our model fit. You are responsible for creating a vector of the total new cases across the time frame of the dataset, for each of those countries, and adding that vector to our 'model_df" data frame.
+
+```{r regression_a, fig.width = 8, fig.height = 8}
+
+# The code below creates a new data frame, 'model_df,' that includes the area,
+# GDP per capita, population and population density for the twenty (20)
+# countries of interest. All you should need to do is execute this code, as is.
+
+# You do not need to add code in this chunk. You will need to add code in the
+# 'regression_b,' 'regression_c' and 'regression_d' code chunks.
+
+twenty_countries <- c("Austria", "Belgium", "Bulgaria", "Cyprus", "Denmark",
+                      "Finland", "France", "Germany", "Hungary", "Ireland",
+                      "Latvia", "Lithuania", "Malta", "Norway", "Poland",
+                      "Portugal", "Romania", "Slovakia", "Spain", "Sweden")
+
+sq_km <- c(83858, 30510, 110994, 9251, 44493, 338145, 551695, 357386, 93030,
+           70273, 64589, 65300, 316, 385178, 312685, 88416, 238397, 49036,
+           498511, 450295)
+
+gdp_pps <- c(128, 118, 51, 91, 129, 111, 104, 123, 71, 190, 69, 81, 100, 142,
+             71, 78, 65, 71, 91, 120)
+
+model_df <- data %>%
+  select(c(countriesAndTerritories, popData2020)) %>%
+  filter(countriesAndTerritories %in% twenty_countries) %>%
+  distinct(countriesAndTerritories, .keep_all = TRUE) %>%
+  add_column(sq_km, gdp_pps) %>%
+  mutate(pop_dens = popData2020 / sq_km) %>%
+  rename(country = countriesAndTerritories, pop = popData2020)
+
+```
+
+Next, we need to add one (1) more column to our 'model_df' data frame. Specifically, one that has the total number of new cases for each of the twenty (20) countries. We calculate the total number of new cases by summing all the daily new cases, for each country, across all the days in the dataset.
+
+```{r regression_b}
+### The following code will be removed for students to complete the work themselves.
+
+total_cases <- data %>%
+  select(c(countriesAndTerritories, cases)) %>%
+  group_by(countriesAndTerritories) %>%
+  dplyr::summarize(total_cases = sum(cases, na.rm = TRUE)) %>%
+  filter(countriesAndTerritories %in% twenty_countries) %>%
+  select(total_cases)
+
+model_df <- model_df %>%
+  add_column(total_cases)
+
+```
+
+Now, we will fit our model using the data in 'model_df.' We are interested in explaining total cases (response) as a function of population (explanatory), population density (explanatory), and GDP (explanatory).
+
+At minimum, your modeling work should including the following:
+
+* A description - either narrative or using R output - of your 'model_df' data frame.
+    + Consider:  what data types are present? What do our rows and columns represent?
+* The *lm()* *summary()* output of your fitted model. As we did in the second Data Analysis Assignment, you can pass your fitted model object - i.e. the output of **lm()** - to *summary()* and get additional details, including R^2, on your model fit.
+* A short statement on the fit of the model.
+    + Which, if any, of our coefficients are statistically significant?
+    + What is the R^2 of our model?
+    + Should we consider a reduced model; i.e. one with fewer parameters?
+
+```{r regression_c}
+
+# Provide a description of the model_df dataframe
+
+str(model_df)
+
+print("The model_df dataframe consist of 20 observations of 6 variables. Data are summarized at the country-level for 20 countries.  Consequently, one of our variables is the country, which is a nominal variable.  The other five variables are ratio-level variables representing: 1) the population of the country, 2) the area of the country in square kilometers, 3) the Gross Domestic Product per capita (in purchasing power standard), 4) the population density (in people per square kilometer), and 5) the total cases in the country during the measurement period ")
+
+#Provide the output of the fitted model
+
+model_4C <- lm(total_cases ~ pop + pop_dens + gdp_pps , data = model_df)
+summary(model_4C)
+
+# Write a short statement about the fit of the model.  Include commentary about which coefficients are statistically significant, what the R^2 of the model is, and whether we should consider a model with fewer parameters
+
+print("The R squared of this model is 0.8982 and the adjusted R squared of this model is 0.8791.  Though the model appears to explain a high percentage of the variation in total cases, only one of the predictors in the model is actually statistically significant at the 0.05 level. Specifically, population is highly statistically signficant.  Meanwhile, population density and GDP per capita are not statistically signficant at the 0.05 level.  As a result, if we want to use this model for prediction, then we may want to consider fitting a model without the statistically insignificant predictors so that we are not overfitting to noise from the testing dataset when predicting.")
+
+# Bonus Analysis: Examine the residuals to see how well the linear regression assumptions are being met
+
+print("Regression analysis makes four assumptions about regression models: 1) the model is linear, 2) the error terms have constant variances, 3) the error terms are independent, and 4) the error terms are normally distributed. Below, we  plot a histogram, Q-Q Plot and scatterplot of the residuals to examine how well these four assumptions are met.  The residual plots below suggest that while the normality and indpendence assumptions may be somewhat met, the linearity and homoscedasticity assumptions are likely not met, so this may not be the best model imaginable.")
+
+hist(residuals(model_4C), xlab = "Regression Model Residual", ylab = "Frequency", main = "Histogram of Regression Model Residuals", col = "orchid", ylim = c(0, 10))
+
+
+qqnorm(y = model_4C$residuals, xlab = "Theoretical Quantiles", ylab = "Sample Quantiles", col= "orchid", main = "Regression Model Residuals Q-Q Plot")
+qqline(y = model_4C$residuals, distribution = qnorm, probs = c(0.25, 0.75), qtype = 7, col = "black")
+
+
+plot(x = model_df$total_cases, y = model_4C$residuals, ylab = "Model Residuals", xlab = "Total COVID-19 Cases", main = "Regression Model Residuals and Total Cases", pch = 20, col = "orchid")
+
+
+```
+
+The last thing we will do is use our model to predict the  total new cases of two (2) countries not included in our model fit. At minimum, your work should include:
+
+* The predicted total new cases for both countries.
+* The actual total new cases for both countries.
+* A short statement on the performance of the model in these two (2) cases.
+    + Compare the new predictions to those made on the fitted dataset. You may compare the predicted values or the residuals.
+  
+```{r regression_d}
+
+# The code below defines our 'newdata' data frame for applying our model to the
+# population, population density and GDP per capita for two (2). Please execute
+# the code as given.
+
+newdata <- data.frame(country = c("Luxembourg", "Netherlands"),
+                      pop = c(626108, 17407585),
+                      gdp_pps = c(261, 130),
+                      pop_dens = c(626108, 17407585) / c(2586, 41540))
+
+# Add code here returning the actual  total cases from our dataset for the
+# Netherlands and Luxembourg.
+
+Luxembourg_data <- data[data$countriesAndTerritories == "Luxembourg", ]
+Netherlands_data <- data[data$countriesAndTerritories == "Netherlands", ]
+
+sum(Luxembourg_data$cases)
+sum(Netherlands_data$cases)
+
+# Add code here returning the total cases for the Netherlands and Luxembourg
+# predicted by our model.
+
+predict(model_4C, newdata = newdata)
+
+
+# Provide commentary about how well the model performed at these two predictions, including how well these predictions compare to those made for countries in the fitted dataset
+
+model_predicted_values <- predict(model_4C, newdata = model_df)
+
+model_df <- cbind(model_df, model_predicted_values, model_4C$residuals)
+
+model_df$absolute_percent_error <- abs(((model_df$model_predicted_values - model_df$total_cases) / model_df$total_cases) * 100)
+
+mean(model_df$absolute_percent_error)
+
+
+print("For Luxembourg, the model predicted 3,953,237 cases, which was 3,652,206 more than the actual case count of 301,031.  For the Netherlands, the model predicted 7,522,800 cases, which was 971,905 fewer than  the actual case count of 8,494,705.  The model performed reasonably well at predicting the total cases for the Netherlands (since it was only off by roughly 11.4%).  However, with a percent error of 1,213.2%, the model did not perform well at predicting the total case count in Luxembourg.  Similarly, the model did not perform well at predicting the total cases for the countries in the training dataset, since the mean absolute percent error of those 20 predictions was over 75%.")
+
+
+
+```
